@@ -1,10 +1,10 @@
 """Height adjustment subsystem."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Tuple
+from dataclasses import dataclass, field
+from typing import Iterable, List, Tuple
 
-from .hardware import Motor, Direction
+from .hardware import Direction, Motor
 
 
 @dataclass
@@ -14,28 +14,120 @@ class HeightAdjuster:
     lift_motor: Motor
     position_range: Tuple[float, float]
     current_height: float = 0.0
+    ramp_threshold: float = 8.0
+    min_effective_speed: float = 0.25
+    target_height: float = field(init=False)
 
-    def move_to(self, height: float) -> None:
-        """Move the arm to an absolute height."""
+    def __post_init__(self) -> None:
+        min_height, max_height = self.position_range
+        clamped_height = max(min(self.current_height, max_height), min_height)
+        if clamped_height != self.current_height:
+            print(
+                "[HeightAdjuster] Initial height clamped",
+                f"from {self.current_height:.2f} to {clamped_height:.2f}"
+            )
+            self.current_height = clamped_height
+        self.target_height = self.current_height
+
+    def move_to(self, height: float, *, max_speed: float | None = None) -> None:
+        """Move the arm to an absolute height using a motion profile."""
+
+        plan = self._plan_motion(height, max_speed=max_speed)
+        self._execute_motion_plan(plan)
+
+    def move_by(self, delta: float, *, max_speed: float | None = None) -> None:
+        """Move the arm by a relative amount."""
+
+        desired_height = self.target_height + delta
+        self.move_to(desired_height, max_speed=max_speed)
+
+    def calibrate(self, reference_height: float, new_range: Tuple[float, float]) -> None:
+        """Recalibrate the current height and soft limits."""
+
+        min_height, max_height = new_range
+        if min_height > max_height:
+            raise ValueError("Minimum height cannot exceed maximum height")
+
+        clamped_reference = max(min(reference_height, max_height), min_height)
+        print(
+            "[HeightAdjuster] Calibrated",
+            f"reference set to {clamped_reference:.2f} within range {new_range}"
+        )
+        self.position_range = new_range
+        self.current_height = clamped_reference
+        self.target_height = clamped_reference
+        self.hold_position()
+
+    def hold_position(self) -> None:
+        """Stop the motor and hold the current target height."""
+
+        self.lift_motor.stop()
+        self.target_height = self.current_height
+
+    def emergency_stop(self) -> None:
+        """Immediately stop any motion and reset the target."""
+
+        print("[HeightAdjuster] Emergency stop triggered")
+        self.lift_motor.stop()
+        self.target_height = self.current_height
+
+    def get_status(self) -> dict:
+        """Return a snapshot of the adjuster's current state."""
+
+        return {
+            "current_height": self.current_height,
+            "target_height": self.target_height,
+            "position_range": self.position_range,
+            "motor_speed": self.lift_motor.speed,
+            "motor_direction": self.lift_motor.direction,
+        }
+
+    def _plan_motion(self, height: float, *, max_speed: float | None = None) -> List[Tuple[str, Direction, float]]:
+        """Create a list of motion segments to reach the requested height."""
 
         min_height, max_height = self.position_range
         clamped_height = max(min(height, max_height), min_height)
-        direction = Direction.CLOCKWISE if clamped_height >= self.current_height else Direction.COUNTER_CLOCKWISE
-        speed = abs(clamped_height - self.current_height)
+        distance = clamped_height - self.current_height
+        if distance == 0:
+            print("[HeightAdjuster] Already at target height")
+            return []
+
+        allowed_speed = self.lift_motor.max_speed if max_speed is None else min(max_speed, self.lift_motor.max_speed)
+        travel_distance = abs(distance)
+        direction = Direction.CLOCKWISE if distance > 0 else Direction.COUNTER_CLOCKWISE
+        ramp_distance = min(self.ramp_threshold, travel_distance / 2)
+        cruise_distance = max(travel_distance - (2 * ramp_distance), 0.0)
+
+        ramp_speed = max(allowed_speed * 0.6, self.min_effective_speed)
+        cruise_speed = max(allowed_speed, self.min_effective_speed)
+
+        plan: List[Tuple[str, Direction, float]] = []
+        if ramp_distance > 0:
+            plan.append(("accelerate", direction, ramp_speed))
+        if cruise_distance > 0:
+            plan.append(("cruise", direction, cruise_speed))
+        if ramp_distance > 0:
+            plan.append(("decelerate", direction, self.min_effective_speed))
+
         print(
-            "[HeightAdjuster] Moving from "
-            f"{self.current_height:.2f} to {clamped_height:.2f}"
+            "[HeightAdjuster] Planned motion",
+            f"from {self.current_height:.2f} to {clamped_height:.2f}"
         )
-        self.lift_motor.set_speed(speed, direction)
-        self.current_height = clamped_height
+        self.target_height = clamped_height
+        return plan
 
-    def nudge(self, delta: float) -> None:
-        """Incrementally adjust the height."""
+    def _execute_motion_plan(self, plan: Iterable[Tuple[str, Direction, float]]) -> None:
+        """Execute the motion plan by sending commands to the motor."""
 
-        target = self.current_height + delta
-        self.move_to(target)
+        if not plan:
+            return
 
-    def stop(self) -> None:
-        """Stop the lift motor."""
+        for phase, direction, speed in plan:
+            print(
+                f"[HeightAdjuster] Phase: {phase}",
+                f"speed {speed:.2f} in {direction}"
+            )
+            self.lift_motor.set_speed(speed, direction)
 
-        self.lift_motor.stop()
+        self.current_height = self.target_height
+
