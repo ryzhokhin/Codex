@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create"
+        required: true
+      name:
+        description: "Release name"
+        required: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare archive
+        run: |
+          mkdir -p dist
+          if [ -d runs ]; then
+            tar -czf dist/runs.tar.gz runs
+          else
+            echo "No runs directory found. Creating placeholder." > dist/README.txt
+            tar -czf dist/runs.tar.gz dist/README.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: dist/runs.tar.gz
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: package
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+      - uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.name || github.event.inputs.tag }}
+          files: runs.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

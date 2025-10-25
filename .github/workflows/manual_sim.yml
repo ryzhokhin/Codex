@@ -1,0 +1,42 @@
+name: Manual Simulation
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_case:
+        description: "Simulation case to run"
+        default: "basic_path"
+        required: true
+      dry_run:
+        description: "Perform a dry-run"
+        type: boolean
+        default: true
+
+concurrency:
+  group: robot-session
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      ROBOT_RUN_BASE: ${{ runner.temp }}/runs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run simulation
+        run: |
+          python -m simulation.run_case --case "${{ inputs.test_case }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-run-${{ inputs.test_case }}
+          path: ${{ env.ROBOT_RUN_BASE }}
