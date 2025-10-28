@@ -41,6 +41,15 @@ class HeightAdjuster:
         desired_height = self.target_height + delta
         self.move_to(desired_height, max_speed=max_speed)
 
+    def nudge(self, delta: float) -> None:
+        """Convenience helper for small relative adjustments."""
+
+        if delta == 0:
+            print("[HeightAdjuster] Nudge of zero requested; no action taken")
+            return
+
+        self.move_by(delta)
+
     def calibrate(self, reference_height: float, new_range: Tuple[float, float]) -> None:
         """Recalibrate the current height and soft limits."""
 
@@ -63,6 +72,11 @@ class HeightAdjuster:
 
         self.lift_motor.stop()
         self.target_height = self.current_height
+
+    def stop(self) -> None:
+        """Alias for hold_position to match controller expectations."""
+
+        self.hold_position()
 
     def emergency_stop(self) -> None:
         """Immediately stop any motion and reset the target."""
@@ -117,7 +131,7 @@ class HeightAdjuster:
         return plan
 
     def _execute_motion_plan(self, plan: Iterable[Tuple[str, Direction, float]]) -> None:
-        """Execute the motion plan by sending commands to the motor."""
+        """Execute the motion plan and ensure the lift holds position on completion."""
 
         if not plan:
             return
@@ -130,4 +144,5 @@ class HeightAdjuster:
             self.lift_motor.set_speed(speed, direction)
 
         self.current_height = self.target_height
+        self.hold_position()
 
