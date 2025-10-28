@@ -41,6 +41,32 @@ class HeightAdjuster:
         desired_height = self.target_height + delta
         self.move_to(desired_height, max_speed=max_speed)
 
+    def nudge(self, delta: float, *, max_speed: float | None = None) -> None:
+        """Convenience helper for small relative adjustments.
+
+        Parameters
+        ----------
+        delta:
+            The relative distance to travel. Positive values raise the arm while
+            negative values lower it.
+        max_speed:
+            Optional override that lets callers cap the motor speed used for the
+            adjustment. When omitted the adjuster will select a gentle default
+            derived from ``min_effective_speed`` so nudges stay smooth.
+        """
+
+        if delta == 0:
+            print("[HeightAdjuster] Nudge of zero requested; no action taken")
+            return
+
+        if max_speed is None:
+            # Apply a soft cap that keeps nudges from running at full speed while
+            # still respecting the minimum effective speed so the motor moves.
+            default_speed = max(self.min_effective_speed * 1.5, self.min_effective_speed)
+            max_speed = min(default_speed, self.lift_motor.max_speed)
+
+        self.move_by(delta, max_speed=max_speed)
+
     def calibrate(self, reference_height: float, new_range: Tuple[float, float]) -> None:
         """Recalibrate the current height and soft limits."""
 
@@ -63,6 +89,11 @@ class HeightAdjuster:
 
         self.lift_motor.stop()
         self.target_height = self.current_height
+
+    def stop(self) -> None:
+        """Alias for hold_position to match controller expectations."""
+
+        self.hold_position()
 
     def emergency_stop(self) -> None:
         """Immediately stop any motion and reset the target."""
@@ -117,7 +148,7 @@ class HeightAdjuster:
         return plan
 
     def _execute_motion_plan(self, plan: Iterable[Tuple[str, Direction, float]]) -> None:
-        """Execute the motion plan by sending commands to the motor."""
+        """Execute the motion plan and ensure the lift holds position on completion."""
 
         if not plan:
             return
@@ -130,4 +161,5 @@ class HeightAdjuster:
             self.lift_motor.set_speed(speed, direction)
 
         self.current_height = self.target_height
+        self.hold_position()
 
