@@ -41,7 +41,7 @@ class RobotController:
         self._movement.rotate_base(speed=20.0, direction=Direction.CLOCKWISE)
         self._movement.move_joint_sequence(self.default_joint_angles)
         self._movement.stop_base()
-        self._height_adjuster.nudge(5.0)
+        self._height_adjuster.nudge(5.0, max_speed=5.0)
         self._movement.move_joint_sequence(angle - 10 for angle in self.default_joint_angles)
         self._height_adjuster.move_to(0.0)
         self._movement.park()
