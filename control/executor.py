@@ -44,6 +44,8 @@ async def _run_steps(
 ) -> int:
     """Execute all steps and return the count of executed items."""
 
+    # Keep track of how many steps have successfully passed validation and
+    # been either simulated or sent to the hardware interface.
     count = 0
     for step in steps:
         _validate_step(step)
@@ -76,6 +78,8 @@ async def execute_move(
         :class:`SimulatedHardware` instance is created lazily if not provided.
     """
 
+    # Default to a simulated hardware interface so that call sites do not need
+    # to provide one explicitly during tests or local development runs.
     if hardware is None:
         hardware = SimulatedHardware()
 
