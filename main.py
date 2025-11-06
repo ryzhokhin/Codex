@@ -1,6 +1,7 @@
 """Entry point for running the RoboArm demonstration."""
 # Task CU-86dyaq7ha: Added documentation and verified functionality
 # Task CU-86dyb4rjd: Testing automatic things with the automated prompt
+# Task CU-86dyb7nyp: Documentation update - workflow automation verified
 from __future__ import annotations
 
 from roboarm import Motor, ServoMotor, RobotController
