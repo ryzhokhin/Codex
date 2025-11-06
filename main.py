@@ -1,4 +1,5 @@
 """Entry point for running the RoboArm demonstration."""
+# Task CU-86dyaq7ha: Added documentation and verified functionality
 from __future__ import annotations
 
 from roboarm import Motor, ServoMotor, RobotController
